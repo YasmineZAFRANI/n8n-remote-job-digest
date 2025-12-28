@@ -1,0 +1,364 @@
+{
+  "name": "Remote Jobs Digest Automation via n8n",
+  "nodes": [
+    {
+      "parameters": {
+        "fromEmail": "yasminez.carriere@gmail.com",
+        "toEmail": "yasminez.carriere@gmail.com",
+        "subject": "=📬 Nouvelles opportunités Data / BI – {{$json.total_jobs}} trouvées\n",
+        "html": "={{$json.email_body}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        560,
+        64
+      ],
+      "id": "0da52101-d65b-44ae-9ab3-bfbe396798f4",
+      "name": "Send email",
+      "webhookId": "ed4a65ff-a9b5-4975-9621-6b435fb1a170",
+      "credentials": {
+        "smtp": {
+          "id": "q6910tIui8YPLjLm",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -784,
+        64
+      ],
+      "id": "07dfa819-bb8b-4908-a909-18cf28f5eddb",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://remoteok.com/api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -560,
+        64
+      ],
+      "id": "af7003d5-d103-43c5-af5e-74ad054e475a",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\n\nitems.forEach((item, idx) => {\n  const j = item.json;\n\n  if (idx === 0) return; // Skip metadata row\n\n  let url = j.url || '';\n  url = url.toLowerCase(); // sécurise le domaine\n\n  out.push({\n    json: {\n      source: 'RemoteOK',\n      title: j.position || j.title || '',\n      company: j.company || j.company_name || '',\n      url,\n      description: j.description || '',\n      pubDate: j.date || j.published_at || '',\n      location: j.location || j.region || 'Remote',\n      salary: j.salary || ''\n    }\n  });\n});\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        64
+      ],
+      "id": "ab94ce36-ce14-447c-9f94-93182eae0e81",
+      "name": "Map RemoteOK JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rôles data / BI que tu vises\nconst must = [\n  'data analyst',\n  'business intelligence',\n  'business analyst',\n  'analytics',\n  'bi developer'\n];\n\n// Techs sympas\nconst nice = [\n  'python','pandas','sql','spark','airflow','dbt',\n  'power bi','tableau','qlik','snowflake','databricks'\n];\n\n// À exclure\nconst exclude = ['internship','intern','volunteer'];\n\n// Pays européens\nconst euCountries = [\n  'france','germany','spain','italy','belgium','netherlands','holland',\n  'luxembourg','switzerland','austria','portugal','ireland','uk','united kingdom',\n  'england','scotland','wales','northern ireland','sweden','norway','finland',\n  'denmark','iceland','poland','czech','slovakia','slovenia','hungary','romania',\n  'bulgaria','croatia','serbia','greece','estonia','latvia','lithuania'\n];\n\nconst remoteWords = [\n  'remote','work from home','home office','hybrid',\n  'distributed','anywhere in europe','europe only','eu only','emea'\n];\n\nfunction hit(text, arr) {\n  return arr.some(k => text.includes(k));\n}\n\nconst cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000); // 30 jours\n\nreturn items\n  .map(it => {\n    const j = it.json;\n    const text = ((j.title || '') + ' ' + (j.description || '')).toLowerCase();\n    const loc  = (j.location || '').toLowerCase();\n\n    // Date : si pubDate existe et est trop vieille, on jette\n    if (j.pubDate) {\n      const d = new Date(j.pubDate);\n      if (d instanceof Date && !isNaN(d) && d < cutoff) {\n        return null;\n      }\n    }\n\n    const hasMust    = hit(text, must);\n    const hasExclude = hit(text, exclude);\n\n    const isFrance   = loc.includes('france') || loc.includes('paris') || text.includes('paris');\n    const isEU       = hit(loc, euCountries) || hit(text, euCountries);\n    const isRemote   = hit(loc, remoteWords) || hit(text, remoteWords);\n\n    const locationOK =\n      isFrance ||\n      (isRemote && (isEU || text.includes('europe') || text.includes('eu') || text.includes('emea')));\n\n    if (!hasMust || hasExclude || !locationOK) return null;\n\n    let score = 60;\n    const niceHits = nice.filter(k => text.includes(k));\n    score += niceHits.length * 5;\n    if (isFrance) score += 10;\n    score = Math.min(score, 100);\n\n    j.score = score;\n    j.keywords_matched = must.filter(k => text.includes(k));\n\n    return it;\n  })\n  .filter(it => it !== null);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        64
+      ],
+      "id": "92d0804e-24e3-409b-b234-bd8510c8280b",
+      "name": "Filter & Score EU/FR"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "16p4YhSICaXO09cqvZiHEf6nwjUwxSvWKFIbZ830Xxkg",
+          "mode": "list",
+          "cachedResultName": "JobTracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16p4YhSICaXO09cqvZiHEf6nwjUwxSvWKFIbZ830Xxkg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1386834576,
+          "mode": "list",
+          "cachedResultName": "To do",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16p4YhSICaXO09cqvZiHEf6nwjUwxSvWKFIbZ830Xxkg/edit#gid=1386834576"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "pubDate": "={{$json.pubDate}}",
+            "source": "={{$json.source}}",
+            "title": "={{$json.title}}",
+            "company": "={{$json.company}}",
+            "location": "={{$json.location}}",
+            "url": "={{$json.url}}",
+            "salary": "={{$json.salary}}",
+            "keywords_matched": "={{Array.isArray($json.keywords_matched) ? $json.keywords_matched.join(', ') : $json.keywords_matched}}",
+            "score": "={{$json.score}}",
+            "description": "="
+          },
+          "matchingColumns": [
+            "source"
+          ],
+          "schema": [
+            {
+              "id": "\nJob Tracker",
+              "displayName": "\nJob Tracker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "0/0 completed  ",
+              "displayName": "0/0 completed  ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pubDate",
+              "displayName": "pubDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "salary",
+              "displayName": "salary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "keywords_matched",
+              "displayName": "keywords_matched",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        112,
+        64
+      ],
+      "id": "5b6c70f1-2789-4e37-aee2-3113d8384046",
+      "name": "Append to JobTracker",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "d3R5GGawjkK1FisM",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const count = items.length;   // nombre total d'offres\n\nif (count === 0) {\n  return [];\n}\n\nlet html = `\n<h2>🔔 ${count} nouvelles opportunités trouvées</h2>\n<p>Voici les offres correspondant à ton profil Data / BI / Analytics :</p>\n<hr/>\n`;\n\nfor (const item of items) {\n  const j = item.json;\n\n  html += `\n  <div style=\"margin-bottom:18px;\">\n    <strong style=\"font-size:16px;\">${j.title}</strong><br/>\n    <em>${j.company}</em><br/>\n    Localisation : ${j.location}<br/>\n    Score : <strong>${j.score}</strong><br/>\n    Mots-clés : ${j.keywords_matched}<br/>\n    <a href=\"${j.url}\" style=\"color:#1a73e8;\">Voir l’offre</a>\n  </div>\n  <hr/>\n  `;\n}\n\n// on renvoie UN SEUL ITEM,\n// mais il contient le nombre total (count)\nreturn [{\n  json: {\n    email_body: html,\n    total_jobs: count\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        64
+      ],
+      "id": "663a27ff-1a59-4222-a088-0420aaf7737b",
+      "name": "Format Email Digest"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Map RemoteOK JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map RemoteOK JSON": {
+      "main": [
+        [
+          {
+            "node": "Filter & Score EU/FR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Score EU/FR": {
+      "main": [
+        [
+          {
+            "node": "Append to JobTracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to JobTracker": {
+      "main": [
+        [
+          {
+            "node": "Format Email Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Email Digest": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2dfb960d-8326-4f3a-a340-d0b90aeaa062",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "feb30eae0527607da0d12a79b0b990ee86745fbd068fa55f7ff876c2fc9a611c"
+  },
+  "id": "j6CYzeCjmGOQEUqo",
+  "tags": []
+}
